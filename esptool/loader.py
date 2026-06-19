@@ -9,8 +9,10 @@ import itertools
 import json
 import os
 import re
+import shutil
 import string
 import struct
+import subprocess
 import sys
 import time
 
@@ -131,6 +133,89 @@ def timeout_per_mb(seconds_per_mb, size_bytes):
     if result < DEFAULT_TIMEOUT:
         return DEFAULT_TIMEOUT
     return result
+
+
+def _run_capture(argv):
+    """Run ``argv`` and return decoded stdout, or None on any failure.
+
+    Used only on error paths to enrich a hint, so it must never raise.
+    """
+    try:
+        result = subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.decode("utf-8", "replace")
+
+
+def _process_command_line(pid):
+    """Return the full command line of ``pid`` (e.g. the Python script/module
+    being run), or None if it can't be determined.
+
+    ``lsof`` only reports the executable name (e.g. "Python"), which can't tell
+    an esp-idf-monitor apart from another esptool; ``ps`` exposes the arguments
+    that distinguish them. The leading interpreter/binary path is shortened to
+    its basename, and the result is truncated, to keep the hint readable - the
+    identifying script/module sits at the front and is preserved.
+    """
+    ps = shutil.which("ps")
+    if ps is None:
+        return None
+    out = _run_capture([ps, "-o", "command=", "-p", pid])
+    if not out:
+        return None
+    cmd = out.strip()
+    if not cmd:
+        return None
+    head, sep, tail = cmd.partition(" ")
+    if "/" in head:
+        cmd = os.path.basename(head) + sep + tail
+    max_len = 100
+    if len(cmd) > max_len:
+        cmd = cmd[: max_len - 1].rstrip() + "…"
+    return cmd
+
+
+def _processes_using_port(port):
+    """Best-effort lookup of processes currently holding ``port`` open.
+
+    Returns a list of ``"<command> (PID <pid>)"`` strings, or an empty list if
+    the information can't be determined. This is only ever used to enrich an
+    error hint when a port can't be opened, so every failure path degrades
+    silently to an empty list and must never raise.
+
+    Relies on ``lsof`` (present by default on macOS and most Linux distros).
+    Windows has no equivalent preinstalled tool, so it is not supported.
+    """
+    lsof = shutil.which("lsof")
+    if lsof is None:
+        return []
+    # -F pc emits machine-readable output: a `p<pid>` line followed by a
+    # `c<command>` line per process (plus `f<fd>` lines we ignore). lsof exits
+    # non-zero when no process is found, which is fine - stdout is then empty.
+    out = _run_capture([lsof, "-F", "pc", port])
+    if out is None:
+        return []
+
+    holders = []
+    pid = None
+    for line in out.splitlines():
+        if not line:
+            continue
+        tag, value = line[0], line[1:]
+        if tag == "p":
+            pid = value
+        elif tag == "c" and pid is not None:
+            # Prefer the full command line (script/module + args); fall back to
+            # the bare executable name lsof gives us.
+            label = _process_command_line(pid) or value
+            holders.append(f"{label} (PID {pid})")
+            pid = None
+    return holders
 
 
 def check_supported_function(func, check_func):
@@ -442,14 +527,31 @@ class ESPLoader:
                     self._port.dtr = False
                 self._port.open()
             except serial.serialutil.SerialException as e:
+                # Windows reports a busy port as "Access is denied"; on POSIX
+                # (macOS/Linux) either the open or the exclusive lock fails
+                # because the port is already held by another process.
+                busy_re = re.compile(
+                    r"Access is denied|Resource busy|Device or resource busy|"
+                    r"exclusively lock|temporarily unavailable",
+                    re.IGNORECASE,
+                )
+                # For a busy port, try to name the process holding it and fall
+                # back to a generic hint if it can't be determined.
+                busy_hint = "Check if the port is not used by another task"
+                if busy_re.search(str(e)):
+                    holders = _processes_using_port(port)
+                    if holders:
+                        listing = "".join(f"\n  - {h}" for h in holders)
+                        busy_hint = f"The port is currently being used by:{listing}"
+
                 port_issues = [
                     [  # does not exist error
                         re.compile(r"Errno 2|FileNotFoundError", re.IGNORECASE),
                         "Check if the port is correct and ESP connected",
                     ],
                     [  # busy port error
-                        re.compile(r"Access is denied", re.IGNORECASE),
-                        "Check if the port is not used by another task",
+                        busy_re,
+                        busy_hint,
                     ],
                 ]
                 if sys.platform.startswith("linux"):
