@@ -30,7 +30,7 @@ For more control and custom integration, esptool exposes a public API - a set of
 
 Basic Workflow:
 
-1. **Detect and Connect**: Use ``detect_chip()`` to automatically identify the connected ESP chip and establish a connection, or manually create and instantiate a specific ``ESPLoader`` object (e.g. ``ESP32ROM``) and establish a connection in two steps.
+1. **Detect and Connect**: Use ``connect_esp()`` for a single call that mirrors the CLI - auto-discover the serial port, auto-detect the chip, and retry failed connections. Alternatively, use ``detect_chip()`` to automatically identify the connected ESP chip and establish a connection, or manually create and instantiate a specific ``ESPLoader`` object (e.g. ``ESP32ROM``) and establish a connection in two steps.
 2. **Run Stub Flasher (Optional)**: Upload and execute the :ref:`stub flasher <stub>` which provides enhanced functionality and speed.
 3. **Perform Operations**: Utilize the chip object's methods or public API command functions to interact with the device.
 4. **Reset and Cleanup**: Ensure proper reset and resource cleanup using context managers.
@@ -57,6 +57,7 @@ This example demonstrates writing two binary files using high-level commands:
 - The ``esp`` object has to be replaced with the stub flasher object returned by ``run_stub(esp)`` when the stub flasher is activated. This step can be skipped if the stub flasher is not needed.
 - Running ``attach_flash(esp)`` is required for any flash-memory-related operations to work.
 - Using the ``esp`` object in a context manager ensures the port gets closed properly after the block is executed.
+- To auto-discover the port and auto-detect the chip in a single call, replace ``detect_chip(PORT)`` with :func:`~esptool.cmds.connect_esp`. It mirrors the full CLI connection behavior and accepts the same options (``before``, ``port_filter``, ``connect_attempts``, etc.); call ``esp.change_baud()`` on the returned object to raise the transfer speed.
 
 ------------
 
@@ -94,29 +95,6 @@ The following example demonstrates running a series of flash memory operations i
 
 - This example doesn't use ``detect_chip()``, but instantiates a ``ESP32ROM`` class directly. This is useful when you know the target chip in advance. In this scenario ``esp.connect()`` is required to establish a connection with the device.
 - Multiple operations can be chained together in a single context manager block.
-
-------------
-
-``connect_esp()`` is a higher-level wrapper that mirrors how the ``esptool`` CLI establishes a connection. It can auto-discover serial ports, auto-detect the chip, retry failed connections, and accepts the same connection options exposed on the command line (``--before``, ``--port-filter``, ``--connect-attempts``, etc.). Use it when you want the full CLI connection behavior from Python in a single call:
-
-.. code-block:: python
-
-    from esptool.cmds import connect_esp, attach_flash, reset_chip, run_stub, write_flash
-
-    FIRMWARE = "firmware.bin"
-
-    # Auto-discover the port and auto-detect the chip
-    with connect_esp() as esp:
-        esp.change_baud(921600)   # Upgrade to a faster operational baud rate
-        esp = run_stub(esp)       # Optional: upload the stub flasher
-        attach_flash(esp)
-        with open(FIRMWARE, "rb") as fw:
-            write_flash(esp, [(0x10000, fw)])
-        reset_chip(esp, "hard-reset")
-
-- Pass ``port="/dev/ttyACM0"`` to target a specific port instead of auto-discovering.
-- ``initial_baud`` is the rate the serial port is opened at for the initial sync, not an operational rate. ROM bootloaders typically require 115200 (the default), and ``connect_esp()`` does not upgrade to a faster rate on its own — call ``esp.change_baud()`` on the returned object afterward (as shown in the example above).
-- ``connect_esp()`` raises ``esptool.FatalError`` if no device can be reached.
 
 ------------
 

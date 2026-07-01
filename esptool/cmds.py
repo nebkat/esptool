@@ -360,16 +360,23 @@ def connect_esp(
     establishes a connection: auto-discover serial ports, auto-detect
     the chip, and retry failed connections.
 
+    This is the recommended single-call entry point for scripts that want
+    the full CLI connection behavior (port discovery, chip detection, and
+    reset/sync retries) without reimplementing it around ``detect_chip()``.
+
     Args:
-        port: Specific serial port device to use, or ``None`` to
-            auto-discover ports via ``port_filter``.
+        port: Specific serial port device to use (e.g. ``"/dev/ttyACM0"``),
+            or ``None`` to auto-discover ports via ``port_filter``.
         chip: Target chip name (e.g. ``"esp32"``, ``"esp32s3"``),
             or ``"auto"`` to detect.
-        initial_baud: The baud rate used when opening the port for the
-            initial sync (ROM bootloaders typically require 115200).
-        port_filter: Filters applied when auto-discovering ports, each
-            entry of the form ``"vid=NUMBER"``, ``"pid=NUMBER"``,
-            ``"name=SUBSTRING"`` or ``"serial=SUBSTRING"``.
+        initial_baud: The baud rate the port is opened at for the initial
+            sync, **not** an operational rate. ROM bootloaders typically
+            require 115200 (the default); ``connect_esp()`` does not upgrade
+            to a faster rate on its own — call ``esp.change_baud()`` on the
+            returned object afterward if you need a faster transfer speed.
+        port_filter: Filters applied when auto-discovering ports (ignored
+            when ``port`` is given), each entry of the form ``"vid=NUMBER"``,
+            ``"pid=NUMBER"``, ``"name=SUBSTRING"`` or ``"serial=SUBSTRING"``.
         before: The chip reset method to perform when connecting
             (``"default-reset"``, ``"usb-reset"``,
             ``"no-reset"``, ``"no-reset-no-sync"``).
@@ -382,11 +389,27 @@ def connect_esp(
             specified.
 
     Returns:
-        A connected ESPLoader instance.
+        A connected ``ESPLoader`` instance for the detected or requested chip.
+
+    Raises:
+        FatalError: If no Espressif device could be reached on any of the
+            candidate serial ports.
+
+    Example:
+        ::
+
+            from esptool.cmds import connect_esp, attach_flash, run_stub
+
+            # Auto-discover the port and auto-detect the chip
+            with connect_esp() as esp:
+                esp.change_baud(921600)  # Upgrade to a faster operational rate
+                esp = run_stub(esp)  # Optional: upload the stub flasher
+                attach_flash(esp)
+                ...
     """
     if port is None:
         try:
-            ser_list = get_port_names(**parse_port_filters(port_filter or []))
+            ser_list = get_port_names(**parse_port_filters(tuple(port_filter or [])))
         except ValueError as exc:
             raise FatalError(str(exc)) from exc
         log.print(f"Found {len(ser_list)} serial ports...")
