@@ -1268,10 +1268,16 @@ def expand_file_arguments(argv: list[str]) -> list[str]:
 
 
 def connect_loop(*args, **kwargs):
+    """Deprecated alias for :func:`esptool.connect_with_retries`, kept for
+    backwards compatibility with downstream scripts. Prefer
+    :func:`esptool.connect_esp` for new code."""
     return connect_with_retries(*args, **kwargs)
 
 
 def get_default_connected_device(*args, **kwargs):
+    """Deprecated alias for :func:`esptool.connect_first_available`, kept for
+    backwards compatibility with downstream scripts. Prefer
+    :func:`esptool.connect_esp` for new code."""
     return connect_first_available(*args, **kwargs)
 
 
