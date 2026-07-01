@@ -53,7 +53,6 @@ try:
     from esptool import FatalError
     from esptool.cmds import (
         attach_flash,
-        detect_chip,
         erase_flash,
         flash_id,
         image_info,
@@ -2317,8 +2316,7 @@ class TestESPObjectOperations(EsptoolTestCase):
     @pytest.mark.quick_test
     @capture_stdout
     def test_stub_run(self, fake_out):
-        with esptool.CHIP_DEFS[arg_chip](port=arg_port) as esp:
-            esp.connect()
+        with esptool.connect_esp(port=arg_port, chip=arg_chip) as esp:
             esp = esp.run_stub()
             read_mac(esp)
             reset_chip(esp, "hard-reset")
@@ -2328,7 +2326,7 @@ class TestESPObjectOperations(EsptoolTestCase):
 
     @capture_stdout
     def test_flash_operations(self, fake_out):
-        with detect_chip(port=arg_port) as esp:  # Test with chip autodetection
+        with esptool.connect_esp(port=arg_port) as esp:  # Test with chip autodetection
             esp = esp.run_stub()
             try:
                 attach_flash(esp)
@@ -2393,7 +2391,7 @@ class TestESPObjectOperations(EsptoolTestCase):
 
             addr = 0x10000
             # Use API directly to flash old file first
-            with detect_chip(port=arg_port) as esp:
+            with esptool.connect_esp(port=arg_port) as esp:
                 esp = esp.run_stub()
                 try:
                     attach_flash(esp)
@@ -2419,7 +2417,7 @@ class TestESPObjectOperations(EsptoolTestCase):
                     reset_chip(esp, "hard-reset")
 
             # Test with no_diff_verify=True
-            with detect_chip(port=arg_port) as esp:
+            with esptool.connect_esp(port=arg_port) as esp:
                 esp = esp.run_stub()
                 try:
                     attach_flash(esp)
@@ -2446,6 +2444,20 @@ class TestESPObjectOperations(EsptoolTestCase):
         finally:
             os.unlink(old_bin.name)
             os.unlink(new_bin.name)
+
+    @pytest.mark.quick_test
+    @capture_stdout
+    def test_connect_esp_change_baud(self, fake_out):
+        # connect_esp() opens the port at the ROM sync rate; the documented
+        # follow-up is esp.change_baud() to raise the operational rate.
+        with esptool.connect_esp(port=arg_port, chip=arg_chip) as esp:
+            esp.change_baud(460800)
+            assert esp.get_baud() == 460800
+            read_mac(esp)  # Confirm the link still works at the new rate
+            reset_chip(esp, "hard-reset")
+        output = fake_out.getvalue()
+        assert "Changing baud rate to 460800" in output
+        assert "MAC:" in output
 
 
 @pytest.mark.host_test
