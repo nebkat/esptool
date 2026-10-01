@@ -1253,7 +1253,7 @@ def write_flash(
         compress (bool): Compress data before flashing.
         no_compress (bool): Don't compress data before flashing.
         force (bool): Ignore safety and content checks (e.g., overwriting bootloader,
-            flash size, whether binary is already in flash).
+            flash size).
         ignore_flash_enc_efuse (bool): Ignore flash encryption eFuse settings.
         no_progress (bool): Disable progress updates.
         diff_with: list[ImageSource | None]: Previously flashed image(s)
