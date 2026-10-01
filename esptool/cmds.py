@@ -30,6 +30,7 @@ from .loader import (
     DEFAULT_CONNECT_ATTEMPTS,
     DEFAULT_OPEN_PORT_ATTEMPTS,
     DEFAULT_TIMEOUT,
+    DIFF_BRIDGE_SECTORS,
     ERASE_WRITE_TIMEOUT_PER_MB,
     NAND_BLOCK_SIZE,
     NAND_PAGES_PER_BLOCK,
@@ -831,6 +832,7 @@ def _diff_flash_regions(
     old_image: bytes,
     new_image: bytes,
     start_address: int,
+    bridge_sectors: int = DIFF_BRIDGE_SECTORS,
 ) -> list[tuple[int, bytes]]:
     """
     Diff two images and return flash write payloads for changed flash sectors.
@@ -842,6 +844,8 @@ def _diff_flash_regions(
     - Missing bytes in old_image (old shorter than new) are treated as 0xFF.
     - Payloads are sector-aligned and padded with 0xFF
       (no bytes from old image are preserved).
+    - Runs separated by at most bridge_sectors unchanged sectors are merged, rewriting
+      the unchanged sectors in between rather than starting another write.
     """
     if len(new_image) == 0:
         return []
@@ -866,15 +870,18 @@ def _diff_flash_regions(
     if not changed_sectors:
         return []
 
-    # Merge consecutive sectors into larger ranges to reduce flash_begin overhead.
+    # Merge consecutive sectors into larger ranges to reduce flash_begin overhead,
+    # bridging gaps of up to bridge_sectors unchanged sectors.
     # Example: sectors [0x4000, 0x5000, 0x6000] -> ranges [(0x4000, 0x3000)].
+    # Example: sectors [0x4000, 0x6000], bridge 2 -> ranges [(0x4000, 0x3000)].
     sorted_sectors = sorted(changed_sectors)
     ranges: list[tuple[int, int]] = []
     run_start = sorted_sectors[0]
     run_end = run_start + ESPLoader.FLASH_SECTOR_SIZE
+    max_gap = bridge_sectors * ESPLoader.FLASH_SECTOR_SIZE
     for s in sorted_sectors[1:]:
-        if s == run_end:
-            run_end += ESPLoader.FLASH_SECTOR_SIZE
+        if s - run_end <= max_gap:
+            run_end = s + ESPLoader.FLASH_SECTOR_SIZE
         else:
             ranges.append((run_start, run_end - run_start))
             run_start = s

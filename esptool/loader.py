@@ -118,6 +118,9 @@ DEFAULT_CONNECT_ATTEMPTS = cfg.getint("connect_attempts", 7)
 WRITE_BLOCK_ATTEMPTS = cfg.getint("write_block_attempts", 3)
 # Number of times to try opening the serial port
 DEFAULT_OPEN_PORT_ATTEMPTS = cfg.getint("open_port_attempts", 1)
+# Unchanged sectors between two changed ones that fast reflashing rewrites to keep a
+# single write going (each separate write costs a fixed erase/compress/verify overhead)
+DIFF_BRIDGE_SECTORS = cfg.getint("diff_bridge_sectors", 2)
 
 # Pages per NAND flash block for the supported NAND chip (W25N01GV).
 # Sent to the stub as part of the NAND read-flash parameter block.

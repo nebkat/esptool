@@ -109,6 +109,8 @@ Complete list of configurable options:
 +------------------------------+-----------------------------------------------------------+----------+
 | open_port_attempts           | Number of attempts to open the port (0 - infinite)        | 1        |
 +------------------------------+-----------------------------------------------------------+----------+
+| diff_bridge_sectors          | Unchanged sectors fast reflashing rewrites to join writes | 2        |
++------------------------------+-----------------------------------------------------------+----------+
 | custom_reset_sequence        | Custom reset sequence for resetting into the bootloader   |          |
 +------------------------------+-----------------------------------------------------------+----------+
 | custom_hard_reset_sequence   | Custom reset sequence for hard resetting the chip         |          |

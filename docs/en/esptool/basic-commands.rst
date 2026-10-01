@@ -79,6 +79,8 @@ To enable fast reflashing, use the ``--diff-with`` option to provide the previou
 
     esptool write-flash 0x10000 new_app.bin --diff-with old_app.bin
 
+Changed sectors separated by up to two unchanged sectors are written together, rewriting the unchanged ones in between, since each separate write has a fixed overhead. The ``diff_bridge_sectors`` option in the :ref:`configuration file <config>` changes this limit.
+
 When multiple files are being flashed, provide a corresponding ``--diff-with`` file for each one (or use ``skip`` to disable fast reflashing for a specific file). The diff files are matched sequentially to the files being flashed - the first ``--diff-with`` file corresponds to the first file being flashed, the second to the second, and so on.
 
 .. note::
